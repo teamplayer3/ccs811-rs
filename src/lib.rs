@@ -335,6 +335,34 @@ where
         self.i2c.write(self.address, &data)
     }
 
+    /// Set environment data.
+    ///
+    /// "The internal algorithm uses these values (or default values if
+    /// not set by the application) to compensate for changes in
+    /// relative humidity and ambient temperature."
+    pub fn set_environment(
+        &mut self,
+        humidity_percentage: f32,
+        temperature_celsius: f32,
+    ) -> Result<(), E> {
+        assert!(
+            humidity_percentage > 0.0
+                || humidity_percentage < 100.0
+                || temperature_celsius > 254.998_05,
+            "wrong input"
+        );
+        let raw_humidity = get_raw_humidity(humidity_percentage);
+        let raw_temp = get_raw_temperature(temperature_celsius);
+        let raw = [
+            AppRegister::EnvData as u8,
+            raw_humidity.0,
+            raw_humidity.1,
+            raw_temp.0,
+            raw_temp.1,
+        ];
+        self.i2c.write(self.address, &raw)
+    }
+
     /// Retrieves Baseline
     pub fn get_baseline(&mut self, baseline: &mut [u8; 2]) -> Result<(), E> {
         self.i2c
@@ -371,6 +399,26 @@ where
 
         Ok(ret)
     }
+}
+
+fn get_raw_humidity(humidity_percentage: f32) -> (u8, u8) {
+    get_raw_environment_data(humidity_percentage)
+}
+
+fn get_raw_temperature(temperature_celsius: f32) -> (u8, u8) {
+    let value = temperature_celsius + 25.0;
+    if value < 0.0 {
+        (0, 0)
+    } else {
+        get_raw_environment_data(value)
+    }
+}
+
+fn get_raw_environment_data(value: f32) -> (u8, u8) {
+    let main = (value as u8) << 1;
+    let rest = value - f32::from(value as u8);
+    let rest = (rest * 512.0) as u16;
+    (main | (((rest & (1 << 8)) >> 8) as u8), rest as u8)
 }
 
 #[cfg(test)]
